@@ -1,0 +1,54 @@
+# ===================================================================
+# Singularity Definition File for Boltzgen (Robust Tarball Method)
+# ===================================================================
+
+Bootstrap: docker
+From: nvidia/cuda:12.2.2-cudnn8-devel-ubuntu22.04
+
+%files
+    # We now copy the single, robust tarball file into a temporary location.
+    boltzgen.tar.gz /tmp/
+
+%environment
+    # Set environment variables that will be available at runtime.
+    export PIP_NO_CACHE_DIR=1
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONUNBUFFERED=1
+    export CUDA_HOME=/usr/local/cuda
+    export PIP_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cu121
+    export HF_HOME=/cache
+
+%post
+    # This section runs once when the container is built.
+
+    # 1. Set DEBIAN_FRONTEND to avoid interactive prompts
+    export DEBIAN_FRONTEND=noninteractive
+
+    # 2. Install system packages from apt
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3.10 python3.10-dev python3-pip python3-venv python3-wheel \
+    build-essential git cmake pkg-config libffi-dev libssl-dev \
+    libxml2-dev libxslt-dev libgl1 libhdf5-dev libboost-all-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+    # 3. Set python3.10 as the default python
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+    python -m pip install --upgrade pip setuptools setuptools_scm wheel
+
+    # 4. Create the app directory, unpack the source code, and clean up
+    mkdir -p /app
+    # The --strip-components=1 flag is crucial. It removes the top-level 'boltzgen/'
+    # directory from the tarball, placing the contents directly into /app.
+    # This perfectly mimics the behavior of the original Dockerfile's "COPY . /app".
+    tar -xzvf /tmp/boltzgen.tar.gz -C /app --strip-components=1
+    rm /tmp/boltzgen.tar.gz
+
+    # 5. Install Boltzgen and all its Python dependencies from the unpacked source
+    pip install --no-cache-dir -e /app
+
+%runscript
+    # This is what runs when you execute the container.
+    echo "Running Boltzgen inside Singularity container..."
+    boltzgen "$@"
